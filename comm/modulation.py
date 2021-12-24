@@ -6,7 +6,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-class _MultiCarrierModulation:
+class MultiCarrierModulation:
     def __init__(self, 
                  nr_subcarriers, 
                  nr_symbols_in_time, 
@@ -41,7 +41,7 @@ class _MultiCarrierModulation:
         self.imp_normalization = np.sqrt(FFTsize / nr_subcarriers)
         
      
-class OFDM:
+class OFDM(MultiCarrierModulation):
     """ 
     OFDM(L, K, F, fs, foff, Tcp) 
     
@@ -49,24 +49,17 @@ class OFDM:
     
     Parameters
     ----------
-    L : Number of subcarriers  
-     
-    K : Number of OFDM symbols in time
-    
-    F : Desired subcarrier spacing in Hz. Note that fs/F should be an integer.
-    
-    fs: Sampling frequency in Hz
-    
-    foff: Frequency shift in Hz. Should be a multiple of F.
-    
-    Tcp: Cyclic prefix length in seconds.
+    nr_subcarriers : Number of subcarriers
+    nr_symbols_in_time : Number of OFDM symbols in time
+    desired_subcarrier_spacing : Desired subcarrier spacing in Hz. Note that fs/F should be an integer.
+    sampling_rate: Sampling frequency in Hz
+    desired_frequency_shift: Frequency shift in Hz. Should be a multiple of F.
+    desired_cp_length: Cyclic prefix length in seconds.
    
     Usage
     ----------        
     - Modulate symbols of size (L,K) with ".modulate( symbols )", delivering the OFDM signal in the time domain
-    
     - Demodulate the time domain signal with ".demodulate( signal )"
-    
     - For SC-FDMA, perform precoding and decoding by ".DFT_precode( symbols )" and ".DFT_decode( symbols )"
     
     """
@@ -76,12 +69,12 @@ class OFDM:
                  desired_subcarrier_spacing, 
                  sampling_rate,
                  desired_frequency_shift,
-                 desired_CP_length):
-        _MultiCarrierModulation.__init__(self, nr_subcarriers, nr_symbols_in_time, desired_subcarrier_spacing, sampling_rate, desired_frequency_shift)
+                 desired_cp_length):
+        super().__init__(nr_subcarriers, nr_symbols_in_time, desired_subcarrier_spacing, sampling_rate, desired_frequency_shift)
         
         # Match CP length to the sampling rate
-        imp_CP_length = int(np.round(desired_CP_length * self.phy_sampling_rate)) 
-        if (desired_CP_length * self.phy_sampling_rate % 1) > np.finfo(float).eps*1e6:
+        imp_CP_length = int(np.round(desired_cp_length * self.phy_sampling_rate))
+        if (desired_cp_length * self.phy_sampling_rate % 1) > np.finfo(float).eps*1e6:
               print('Warning, cylic prefix length times sampling rate must be an integer. Thus, the cylic prefix length is set to', imp_CP_length*self.phy_dt/1e-6, '\u03bcs')       
       
         self.imp_CP_length = imp_CP_length
@@ -89,7 +82,7 @@ class OFDM:
         self.phy_CP_length = imp_CP_length * self.phy_dt
         self.phy_time_spacing = self.phy_CP_length + 1/self.phy_subcarrier_spacing
         
-        self.nr_samples =  self.nr_symbols_in_time * (self.imp_FFTsize + self.imp_CP_length)
+        self.nr_samples = self.nr_symbols_in_time * (self.imp_FFTsize + self.imp_CP_length)
 
     def modulate(self, symbols):
         """
@@ -136,7 +129,7 @@ class OFDM:
         fft_output = np.fft.fft(signal[-self.imp_FFTsize::, :], axis=0, norm="ortho")        
         fft_output = np.roll(fft_output, -self.imp_circshiftFFT, axis=0)/self.imp_normalization
         
-        return fft_output[:self.nr_subcarriers,:]
+        return fft_output[:self.nr_subcarriers, :]
     
     def DFT_precode(self, symbols):
         """
@@ -171,40 +164,31 @@ class OFDM:
         return np.fft.ifft(symbols, axis=0, norm="ortho")
          
 
-class FBMC:
+class FBMC(MultiCarrierModulation):
     """ 
-    FBMC(L, K, F, fs, foff, p, o) 
-    
+    FBMC(L, K, F, fs, foff, p, o)
     FBMC modulation and demodulation, including pruned DFT spread FBMC
-    
     Parameters
     ----------
-    L : Number of subcarriers  
-     
+    L : Number of subcarriers
     K : Number of OFDM symbols in time
-    
     F : Subcarrier spacing in Hz. Nfft = fs/F should be an integer.
-    
     fs : Sampling frequency in Hz
-    
     foff : Frequency shift in Hz. Must be a multiple of F.
-    
     p : Prototype filter: 'PHYDYAS', 'TimeRRC', 'Hermite', 'HermiteTrunc1.56', 'HermiteTrunc1.46'
-    
     o : Overlapping factor, must be an integer
    
     Usage
     ----------        
-    - Modulate symbols of size (L,K) with ".modulate( symbols )", delivering the FBMC signal in the time domain. Note that conventional FBMC, only real-valued symbols can be transmitted.
-    
+    - Modulate symbols of size (L,K) with ".modulate( symbols )", delivering the FBMC signal in the time domain.
+    Note that conventional FBMC, only real-valued symbols can be transmitted.
     - Demodulate the time domain signal with ".demodulate( signal )"
 
     Pruned DFT spread FBMC
     ----------       
     - The prototype filter should be 'HermiteTrunc1.56',  'HermiteTrunc1.46' or 'TimeRRC'
-    
-    - Initialize with ".prunedDFT_initialize(Lcp)", where Lcp is an even integer and represents the length of the frequency CP. Can usually be set to zero
-    
+    - Initialize with ".prunedDFT_initialize(Lcp)", where Lcp is an even integer and represents the length of the frequency CP.
+    Can usually be set to zero
     - Perform precoding and decoding by ".prunedDFT_precoding( symbols )" and ".prunedDFT_decoding( symbols )", similar as in SC-FDMA
     
     """
@@ -216,12 +200,12 @@ class FBMC:
                  desired_frequency_shift,
                  prototype_filter,
                  overlapping_factor):
-        _MultiCarrierModulation.__init__(self, nr_subcarriers, nr_symbols_in_time, desired_subcarrier_spacing, sampling_rate, desired_frequency_shift)
+        super().__init__(nr_subcarriers, nr_symbols_in_time, desired_subcarrier_spacing, sampling_rate, desired_frequency_shift)
   
         # Determine protoypte filter
         t_minmax = overlapping_factor * 1/(2 * self.phy_subcarrier_spacing)
         t = np.arange(-t_minmax, t_minmax, self.phy_dt)
-        if prototype_filter ==  "Hermite":  # Orthogonal for TF=2
+        if prototype_filter == "Hermite":  # Orthogonal for TF=2
             prototype_filter_sampled = self._hermite_filter(t, 1/self.phy_subcarrier_spacing, overlapping_factor)
         elif prototype_filter == "PHYDYAS":  # Orthogonal for TF=2
             prototype_filter_sampled = self._PYDYAS_filter(t, 1/self.phy_subcarrier_spacing, overlapping_factor)
@@ -236,7 +220,7 @@ class FBMC:
 
 
         # Precalculate pi/2  phase shift
-        k,l = np.meshgrid(np.arange(nr_symbols_in_time),np.arange(nr_subcarriers))
+        k, l = np.meshgrid(np.arange(nr_symbols_in_time), np.arange(nr_subcarriers))
         phase_shift = np.exp(1j * np.pi/2 * (l+k))
         
         # Mapping for the overlap and add operation
@@ -248,7 +232,7 @@ class FBMC:
         # Attributes
         self.phy_time_spacing = 1/self.phy_subcarrier_spacing/2
         
-        self.imp_prototype_filter_sampled = prototype_filter_sampled.reshape( np.size(prototype_filter_sampled), 1)       
+        self.imp_prototype_filter_sampled = prototype_filter_sampled.reshape(np.size(prototype_filter_sampled), 1)
         self.imp_overlapping_factor = overlapping_factor
         self.imp_phase_shift = phase_shift
         self.imp_mapping_time = mapping_time
@@ -380,7 +364,7 @@ class FBMC:
             x = np.zeros( (self.imp_pDFTsFBMC_datasub, self.nr_symbols_in_time) )
             x[i,0] = 1
             y = self.prunedDFT_decoding(self.demodulate(self.modulate(self.prunedDFT_precoding(x))))  
-            onetapscaling[i] = 1/abs(y[i,0])
+            onetapscaling[i] = 1/abs(y[i, 0])
             
         self.imp_pDFTsFBMC_onetapscaling = np.sqrt(onetapscaling)   
         
